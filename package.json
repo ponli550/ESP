@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "@google-cloud/vision": "^4.3.2",
+    "dotenv": "^16.4.7"
+  },
+  "scripts": {
+    "start": "node vision-server.js"
+  }
+}
