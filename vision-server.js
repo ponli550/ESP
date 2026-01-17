@@ -40,6 +40,13 @@ const UPLOAD_LIMIT_WINDOW = 1000; // 1 second
 const UPLOAD_LIMIT_MAX = 1; // 1 upload per window
 
 // Telegram Alert Config
+// Debug Env Vars
+console.log("Loading Environment Variables...");
+console.log("PWD:", process.cwd());
+console.log("ESP32_API_KEY:", process.env.ESP32_API_KEY ? "Loaded" : "Missing");
+console.log("TELEGRAM_BOT_TOKEN:", process.env.TELEGRAM_BOT_TOKEN ? "Loaded" : "Missing");
+console.log("TELEGRAM_CHAT_ID:", process.env.TELEGRAM_CHAT_ID ? "Loaded" : "Missing");
+
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const ALERT_TARGET = process.env.ALERT_TARGET
@@ -56,6 +63,23 @@ if (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID) {
     bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
     console.log("Telegram Bot Initialized with Polling");
 
+    // Helper for Status Keyboard
+    const getStatusMarkup = () => ({
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: "Refresh 🔄", callback_data: "status" },
+                    { text: "Take Photo 📸", callback_data: "photo" }
+                ],
+                [
+                    { text: isAiEnabled ? "Disable AI 🤖" : "Enable AI 🤖", callback_data: "toggle" },
+                    { text: "Gallery 🎞️", callback_data: "gallery" }
+                ]
+            ]
+        },
+        parse_mode: 'Markdown'
+    });
+
     // Command Handlers
     bot.onText(/\/status/, (msg) => {
         const chatId = msg.chat.id;
@@ -66,7 +90,7 @@ if (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID) {
             ? currentLabels.map(l => `${l.description} (${Math.round(l.score * 100)}%)`).join(", ")
             : "No objects detected yet.";
 
-        bot.sendMessage(chatId, `📊 *System Status*\n- AI Detection: ${status}\n- Last Seen: ${labels}`, { parse_mode: 'Markdown' });
+        bot.sendMessage(chatId, `📊 *System Status*\n- AI Detection: ${status}\n- Last Seen: ${labels}`, getStatusMarkup());
     });
 
     bot.onText(/\/photo/, (msg) => {
@@ -80,6 +104,34 @@ if (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID) {
         }
     });
 
+    bot.onText(/\/gallery/, (msg) => {
+        const chatId = msg.chat.id;
+        if (chatId.toString() !== TELEGRAM_CHAT_ID.toString()) return;
+
+        if (snapshotGallery.length === 0) {
+            bot.sendMessage(chatId, "📭 The Detection Reel is empty.");
+            return;
+        }
+
+        bot.sendMessage(chatId, `🎞️ *Latest Detections* (Last ${snapshotGallery.length})`, { parse_mode: 'Markdown' });
+
+        // Send the last 3 snapshots to avoid spamming
+        snapshotGallery.slice(0, 3).forEach((snap, index) => {
+            const buffer = Buffer.from(snap.image, 'base64');
+            bot.sendPhoto(chatId, buffer, {
+                caption: `🕒 ${snap.time}\n🏷️ ${snap.labels}`
+            });
+        });
+    });
+
+    bot.onText(/\/targets/, (msg) => {
+        const chatId = msg.chat.id;
+        if (chatId.toString() !== TELEGRAM_CHAT_ID.toString()) return;
+
+        const targets = Array.isArray(ALERT_TARGET) ? ALERT_TARGET.join(", ") : ALERT_TARGET;
+        bot.sendMessage(chatId, `🎯 *Current Alert Targets:*\n\`${targets}\``, { parse_mode: 'Markdown' });
+    });
+
     bot.onText(/\/toggle/, (msg) => {
         const chatId = msg.chat.id;
         if (chatId.toString() !== TELEGRAM_CHAT_ID.toString()) return;
@@ -87,20 +139,69 @@ if (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID) {
         isAiEnabled = !isAiEnabled;
         const status = isAiEnabled ? "Activated" : "Deactivated";
 
-        // Notify via Telegram
-        bot.sendMessage(chatId, `🤖 AI Detection has been *${status}*.`, { parse_mode: 'Markdown' });
-
-        // Broadcast to WebUI
+        bot.sendMessage(chatId, `🤖 AI Detection has been *${status}*.`, getStatusMarkup());
         broadcastUpdate();
-        console.log(`AI Detection toggled via Telegram: ${isAiEnabled}`);
+    });
+
+    // Callback Query Handler (Buttons)
+    bot.on('callback_query', (query) => {
+        const chatId = query.message.chat.id;
+        const data = query.data;
+
+        if (chatId.toString() !== TELEGRAM_CHAT_ID.toString()) return;
+
+        if (data === 'status') {
+            const status = isAiEnabled ? "✅ ON" : "❌ OFF";
+            const labels = currentLabels.length > 0
+                ? currentLabels.map(l => `${l.description} (${Math.round(l.score * 100)}%)`).join(", ")
+                : "No objects detected yet.";
+
+            bot.editMessageText(`📊 *System Status* (Refreshed)\n- AI Detection: ${status}\n- Last Seen: ${labels}`, {
+                chat_id: chatId,
+                message_id: query.message.message_id,
+                ...getStatusMarkup()
+            });
+        } else if (data === 'photo') {
+            if (currentImageBuffer) {
+                bot.sendPhoto(chatId, currentImageBuffer, { caption: "📸 Fresh snapshot from camera." });
+            } else {
+                bot.answerCallbackQuery(query.id, { text: "⚠️ No image buffer available.", show_alert: true });
+            }
+        } else if (data === 'toggle') {
+            isAiEnabled = !isAiEnabled;
+            const status = isAiEnabled ? "✅ ON" : "❌ OFF";
+            const labels = currentLabels.length > 0
+                ? currentLabels.map(l => `${l.description} (${Math.round(l.score * 100)}%)`).join(", ")
+                : "No objects detected yet.";
+
+            bot.editMessageText(`🤖 AI Detection toggled to *${isAiEnabled ? "ON" : "OFF"}*.\n\n📊 *System Status*\n- AI Detection: ${status}\n- Last Seen: ${labels}`, {
+                chat_id: chatId,
+                message_id: query.message.message_id,
+                ...getStatusMarkup()
+            });
+            broadcastUpdate();
+        } else if (data === 'gallery') {
+            if (snapshotGallery.length === 0) {
+                bot.answerCallbackQuery(query.id, { text: "📭 Reel is empty.", show_alert: true });
+            } else {
+                bot.sendMessage(chatId, `🎞️ *Latest Detections*`, { parse_mode: 'Markdown' });
+                snapshotGallery.slice(0, 3).forEach((snap) => {
+                    bot.sendPhoto(chatId, Buffer.from(snap.image, 'base64'), {
+                        caption: `🕒 ${snap.time}\n🏷️ ${snap.labels}`
+                    });
+                });
+            }
+        }
+
+        bot.answerCallbackQuery(query.id);
     });
 
     bot.onText(/\/start|\/help/, (msg) => {
         const chatId = msg.chat.id;
         if (chatId.toString() !== TELEGRAM_CHAT_ID.toString()) return;
 
-        const helpText = `👋 *ESP32 Camera Bot*\n\nAvailable commands:\n/status - Check current system state\n/photo - Get a live photo\n/toggle - Enable/Disable AI\n/help - Show this message`;
-        bot.sendMessage(chatId, helpText, { parse_mode: 'Markdown' });
+        const helpText = `👋 *ESP32 Camera Bot*\n\nYou can use the buttons below for quick access or use the commands.`;
+        bot.sendMessage(chatId, helpText, getStatusMarkup());
     });
 
 } else {
@@ -387,7 +488,7 @@ server.on('request', (request, response) => {
     }
     // 6. Video Upload Endpoint (Manual Recording)
     if (request.method == 'POST' && request.url === "/uploadVideo") {
-        if (!isAuthenticated(request)) {
+        if (!isAuthorized(request)) {
             response.writeHead(401);
             response.end("Unauthorized");
             return;
