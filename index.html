@@ -13,6 +13,8 @@
             --text-secondary: #94a3b8;
             --accent: #38bdf8;
             --chip-bg: #334155;
+            --success: #22c55e;
+            --danger: #ef4444;
         }
 
         body {
@@ -37,11 +39,20 @@
             text-align: center;
         }
 
-        h1 {
-            font-size: 1.5rem;
-            font-weight: 600;
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             margin-bottom: 1.5rem;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 1rem;
+        }
+
+        h1 {
+            font-size: 1.25rem;
+            font-weight: 600;
             color: var(--accent);
+            margin: 0;
         }
 
         .image-container {
@@ -70,6 +81,7 @@
             justify-content: center;
             gap: 0.5rem;
             min-height: 2rem;
+            margin-bottom: 1rem;
         }
 
         .chip {
@@ -89,6 +101,67 @@
             margin-left: 0.25rem;
         }
 
+        .controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 1rem;
+            background: #0f172a;
+            padding: 1rem;
+            border-radius: 0.5rem;
+        }
+
+        /* Toggle Switch */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--chip-bg);
+            transition: .4s;
+            border-radius: 24px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked+.slider {
+            background-color: var(--success);
+        }
+
+        input:checked+.slider:before {
+            transform: translateX(26px);
+        }
+
+        .control-label {
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
         @keyframes fadeIn {
             from {
                 opacity: 0;
@@ -102,76 +175,97 @@
         }
 
         .status {
-            margin-top: 1.5rem;
-            font-size: 0.875rem;
+            margin-top: 1rem;
+            font-size: 0.75rem;
             color: var(--text-secondary);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 0.5rem;
         }
 
-        .dot {
+        .connection-dot {
             height: 8px;
             width: 8px;
             background-color: #f59e0b;
-            /* Amber for connecting */
             border-radius: 50%;
             display: inline-block;
-            margin-right: 0.5rem;
         }
 
-        .dot.connected {
-            background-color: #22c55e;
-            /* Green for connected */
-            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-        }
-
-        @keyframes pulse {
-
-            0%,
-            100% {
-                opacity: 1;
-            }
-
-            50% {
-                opacity: .5;
-            }
+        .connection-dot.connected {
+            background-color: var(--success);
+            box-shadow: 0 0 8px var(--success);
         }
     </style>
 </head>
 
 <body>
     <div class="container">
-        <h1>Live Camera Feed</h1>
+        <header>
+            <h1>Vision Camera</h1>
+            <div class="status">
+                <span id="connDot" class="connection-dot"></span>
+                <span id="connText">Connecting...</span>
+            </div>
+        </header>
+
         <div class="image-container">
-            <img id="camImage" src="/saveImage.jpg" alt="Waiting for stream..." onerror="this.style.display='none'">
+            <img id="camImage" src="/saveImage.jpg" alt="No Signal" onerror="this.style.display='none'">
         </div>
 
         <div id="labels" class="labels-container">
             <!-- Labels will be injected here -->
         </div>
 
-        <div class="status">
-            <span id="statusDot" class="dot"></span>
-            <span id="statusText">Connecting...</span>
+        <div class="controls">
+            <span class="control-label">AI Detection</span>
+            <label class="switch">
+                <input type="checkbox" id="aiToggle" onchange="toggleAi(this.checked)">
+                <span class="slider"></span>
+            </label>
         </div>
     </div>
 
     <script>
         const img = document.getElementById('camImage');
         const labelsContainer = document.getElementById('labels');
-        const statusDot = document.getElementById('statusDot');
-        const statusText = document.getElementById('statusText');
+        const connDot = document.getElementById('connDot');
+        const connText = document.getElementById('connText');
+        const aiToggle = document.getElementById('aiToggle');
+
+        // Initial fetch to get status
+        fetch('/labels')
+            .then(res => res.json())
+            .then(data => {
+                // If endpoint returns { labels: [], aiEnabled: bool }
+                if (typeof data.aiEnabled !== 'undefined') {
+                    aiToggle.checked = data.aiEnabled;
+                }
+            })
+            .catch(e => console.log("Init fetch error", e));
+
+        function toggleAi(enabled) {
+            fetch('/toggleAI', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: enabled })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        console.log("AI Toggled:", data.enabled);
+                    }
+                });
+        }
 
         function connectWebSocket() {
-            // Use wss:// if on https, ws:// if on http
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = protocol + '//' + window.location.host;
-
             const ws = new WebSocket(wsUrl);
 
             ws.onopen = () => {
-                console.log('WebSocket Connected');
-                statusDot.classList.add('connected');
-                statusDot.style.backgroundColor = ''; // Remove inline override
-                statusText.innerText = 'Live View • Real-time (WebSocket)';
+                connDot.classList.add('connected');
+                connText.innerText = 'Connected';
             };
 
             ws.onmessage = (event) => {
@@ -179,41 +273,37 @@
                     const data = JSON.parse(event.data);
 
                     if (data.type === 'frame') {
-                        // Update Image
+                        // Image
                         if (data.image) {
                             img.src = 'data:image/jpeg;base64,' + data.image;
                             img.style.display = 'block';
                         }
 
-                        // Update Labels
+                        // Labels (Check if array or object wrapper)
                         if (data.labels) {
                             updateLabels(data.labels);
                         }
+
+                        // Sync Toggle State (if changed by another admin)
+                        if (typeof data.aiEnabled !== 'undefined') {
+                            aiToggle.checked = data.aiEnabled;
+                        }
                     }
                 } catch (e) {
-                    console.error('Error parsing WebSocket message', e);
+                    console.error('WS Error', e);
                 }
             };
 
             ws.onclose = () => {
-                console.log('WebSocket Disconnected. Reconnecting...');
-                statusDot.classList.remove('connected');
-                statusDot.style.backgroundColor = '#ef4444'; // Red
-                statusText.innerText = 'Disconnected (Reconnecting...)';
-                // Try reconnect in 3 seconds
+                connDot.classList.remove('connected');
+                connText.innerText = 'Disconnected';
                 setTimeout(connectWebSocket, 3000);
-            };
-
-            ws.onerror = (err) => {
-                console.error('WebSocket Error', err);
-                ws.close();
             };
         }
 
         function updateLabels(labels) {
-            labelsContainer.innerHTML = ''; // Clear existing
+            labelsContainer.innerHTML = '';
             if (labels && labels.length > 0) {
-                // Take top 5 labels
                 labels.slice(0, 5).forEach(label => {
                     const chip = document.createElement('div');
                     chip.className = 'chip';
@@ -221,10 +311,11 @@
                     chip.innerHTML = `${label.description} <span>${percent}</span>`;
                     labelsContainer.appendChild(chip);
                 });
+            } else {
+                // Optional: Show "AI Off" or empty
             }
         }
 
-        // Start connection
         connectWebSocket();
     </script>
 </body>

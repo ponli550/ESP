@@ -8,6 +8,7 @@ let fs = require('fs');
 const http = require('http');
 const WebSocket = require('ws'); // Import WebSocket
 const crypto = require('crypto'); // Import Crypto for random tokens
+const TelegramBot = require('node-telegram-bot-api'); // Import Telegram Bot
 
 const server = http.createServer();
 const wss = new WebSocket.Server({ server }); // Attach WebSocket to HTTP server
@@ -15,14 +16,13 @@ const wss = new WebSocket.Server({ server }); // Attach WebSocket to HTTP server
 // Store image in memory instead of file
 let currentImageBuffer = null;
 let currentLabels = [];
+let isAiEnabled = true; // DEFAULT: AI IS ON
 
 // Auth Config
 const SERVER_PASSWORD = process.env.PASSWORD || "admin";
 const COOKIE_NAME = "cameraview_auth";
-// const SESSION_VAL = "authenticated_session"; // OLD Static Cookie (Removed)
 
 // Dynamic Session Storage
-// Map<sessionId, { expiresAt: number }>
 const sessions = new Map();
 const SESSION_DURATION = 60 * 60 * 1000; // 1 Hour
 
@@ -34,6 +34,23 @@ const LOGIN_LIMIT_WINDOW = 60 * 1000; // 1 minute
 const LOGIN_LIMIT_MAX = 5; // 5 attempts per window
 const UPLOAD_LIMIT_WINDOW = 1000; // 1 second
 const UPLOAD_LIMIT_MAX = 1; // 1 upload per window
+
+// Telegram Alert Config
+const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const ALERT_TARGET = process.env.ALERT_TARGET || ["Person", "Toys"]; // Default target
+const ALERT_COOLDOWN = 60 * 1000; // 1 minute cooldown
+
+let lastAlertTime = 0;
+let bot = null;
+
+// Initialize Bot if token exists
+if (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID) {
+    bot = new TelegramBot(TELEGRAM_TOKEN, { polling: false });
+    console.log("Telegram Bot Initialized");
+} else {
+    console.log("Telegram Bot Config Missing (Optional)");
+}
 
 // In-memory request trackers
 const loginAttempts = new Map();
@@ -91,7 +108,8 @@ function broadcastUpdate() {
     const data = JSON.stringify({
         type: 'frame',
         image: currentImageBuffer ? currentImageBuffer.toString('base64') : null,
-        labels: currentLabels
+        labels: currentLabels,
+        aiEnabled: isAiEnabled
     });
 
     wss.clients.forEach(client => {
@@ -103,6 +121,30 @@ function broadcastUpdate() {
 
 function getClientIp(req) {
     return req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+}
+
+async function sendTelegramAlert(imageBuffer, labels) {
+    if (!bot || !TELEGRAM_CHAT_ID) return;
+
+    const now = Date.now();
+    if (now - lastAlertTime < ALERT_COOLDOWN) return; // Cooldown
+
+    // Check if target label exists in detections
+    const detected = labels.find(l => l.description.toLowerCase().includes(ALERT_TARGET.toLowerCase()));
+
+    if (detected) {
+        console.log(`🚨 ALERT! Detected ${detected.description}. Sending to Telegram...`);
+        lastAlertTime = now;
+
+        try {
+            await bot.sendPhoto(TELEGRAM_CHAT_ID, imageBuffer, {
+                caption: `🚨 Security Alert: ${detected.description} detected! (${Math.round(detected.score * 100)}%)`
+            });
+            console.log("Telegram alert sent successfully.");
+        } catch (e) {
+            console.error("Failed to send Telegram alert:", e.message);
+        }
+    }
 }
 
 server.on('request', (request, response) => {
@@ -139,15 +181,23 @@ server.on('request', (request, response) => {
             console.log(`Received image. Size: ${currentImageBuffer.length} bytes`);
 
             try {
-                const labels = await labelAPI(currentImageBuffer);
-                currentLabels = labels; // Update global labels
+                // Only perform AI detection if enabled!
+                if (isAiEnabled) {
+                    const labels = await labelAPI(currentImageBuffer);
+                    currentLabels = labels;
+
+                    // Check for Alerts
+                    sendTelegramAlert(currentImageBuffer, currentLabels);
+
+                } else {
+                    currentLabels = []; // Clear labels if AI is off
+                }
 
                 // Broadcast update to WebSockets immediately
                 broadcastUpdate();
 
                 response.writeHead(200, { 'Content-Type': 'application/json' });
-                response.end(JSON.stringify(labels));
-                console.log(JSON.stringify(labels, null, 2));
+                response.end(JSON.stringify(currentLabels));
             } catch (error) {
                 console.error("Error in label detection:", error);
 
@@ -181,13 +231,6 @@ server.on('request', (request, response) => {
                     // Generate Session ID
                     const sessionId = crypto.randomUUID();
                     sessions.set(sessionId, { expiresAt: Date.now() + SESSION_DURATION });
-
-                    // Cleanup old sessions occasionally (simple optimization)
-                    if (sessions.size > 1000) {
-                        for (const [id, s] of sessions) {
-                            if (Date.now() > s.expiresAt) sessions.delete(id);
-                        }
-                    }
 
                     response.writeHead(200, {
                         'Set-Cookie': `${COOKIE_NAME}=${sessionId}; HttpOnly; Path=/; Max-Age=3600`,
@@ -234,6 +277,28 @@ server.on('request', (request, response) => {
 
     // --- PROTECTED ROUTES BELOW ---
 
+    // Toggle AI Endpoint
+    if (request.method == 'POST' && request.url === "/toggleAI") {
+        let body = '';
+        request.on('data', chunk => body += chunk.toString());
+        request.on('end', () => {
+            try {
+                const { enabled } = JSON.parse(body);
+                isAiEnabled = !!enabled; // Force boolean
+                console.log(`AI Detection toggled: ${isAiEnabled}`);
+
+                broadcastUpdate(); // Notify clients of state change
+
+                response.writeHead(200, { 'Content-Type': 'application/json' });
+                response.end(JSON.stringify({ success: true, enabled: isAiEnabled }));
+            } catch (e) {
+                response.writeHead(400);
+                response.end("Bad Request");
+            }
+        });
+        return;
+    }
+
     if (request.method == 'GET' && request.url == '/') {
         fs.readFile('./index.html', function (err, data) {
             if (err) {
@@ -253,8 +318,9 @@ server.on('request', (request, response) => {
             response.end("No image received yet");
         }
     } else if (request.method == 'GET' && request.url === "/labels") {
+        // Return object with status to sync UI
         response.writeHead(200, { 'Content-Type': 'application/json' });
-        response.end(JSON.stringify(currentLabels));
+        response.end(JSON.stringify({ labels: currentLabels, aiEnabled: isAiEnabled }));
     } else {
         console.log(`Received unhandled request: ${request.method} ${request.url}`);
         response.writeHead(405, { 'Content-Type': 'text/plain' });
