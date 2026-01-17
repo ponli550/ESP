@@ -196,6 +196,42 @@
             background-color: var(--success);
             box-shadow: 0 0 8px var(--success);
         }
+
+        /* Edge Alert Badge */
+        .edge-badge {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background-color: var(--danger);
+            color: white;
+            padding: 0.4rem 0.8rem;
+            border-radius: 0.5rem;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            display: none;
+            animation: pulse 2s infinite;
+            z-index: 10;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+                opacity: 1;
+            }
+
+            50% {
+                transform: scale(1.05);
+                opacity: 0.8;
+            }
+
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
     </style>
 </head>
 
@@ -210,6 +246,7 @@
         </header>
 
         <div class="image-container">
+            <div id="edgeBadge" class="edge-badge">⚡ Edge AI: Face Detected</div>
             <img id="camImage" src="/saveImage.jpg" alt="No Signal" onerror="this.style.display='none'">
         </div>
 
@@ -232,6 +269,8 @@
         const connDot = document.getElementById('connDot');
         const connText = document.getElementById('connText');
         const aiToggle = document.getElementById('aiToggle');
+        const edgeBadge = document.getElementById('edgeBadge');
+        let edgeTimeout;
 
         // Initial fetch to get status
         fetch('/labels')
@@ -288,11 +327,24 @@
                         if (typeof data.aiEnabled !== 'undefined') {
                             aiToggle.checked = data.aiEnabled;
                         }
+
+                        // Edge Detection Alert
+                        if (data.edgeDetected) {
+                            showEdgeAlert();
+                        }
                     }
                 } catch (e) {
                     console.error('WS Error', e);
                 }
             };
+
+            function showEdgeAlert() {
+                edgeBadge.style.display = 'block';
+                clearTimeout(edgeTimeout);
+                edgeTimeout = setTimeout(() => {
+                    edgeBadge.style.display = 'none';
+                }, 3000); // Show for 3 seconds
+            }
 
             ws.onclose = () => {
                 connDot.classList.remove('connected');

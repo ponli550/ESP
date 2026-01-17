@@ -48,8 +48,56 @@ let bot = null;
 
 // Initialize Bot if token exists
 if (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID) {
-    bot = new TelegramBot(TELEGRAM_TOKEN, { polling: false });
-    console.log("Telegram Bot Initialized");
+    bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
+    console.log("Telegram Bot Initialized with Polling");
+
+    // Command Handlers
+    bot.onText(/\/status/, (msg) => {
+        const chatId = msg.chat.id;
+        if (chatId.toString() !== TELEGRAM_CHAT_ID.toString()) return;
+
+        const status = isAiEnabled ? "✅ ON" : "❌ OFF";
+        const labels = currentLabels.length > 0
+            ? currentLabels.map(l => `${l.description} (${Math.round(l.score * 100)}%)`).join(", ")
+            : "No objects detected yet.";
+
+        bot.sendMessage(chatId, `📊 *System Status*\n- AI Detection: ${status}\n- Last Seen: ${labels}`, { parse_mode: 'Markdown' });
+    });
+
+    bot.onText(/\/photo/, (msg) => {
+        const chatId = msg.chat.id;
+        if (chatId.toString() !== TELEGRAM_CHAT_ID.toString()) return;
+
+        if (currentImageBuffer) {
+            bot.sendPhoto(chatId, currentImageBuffer, { caption: "📸 Fresh snapshot from camera." });
+        } else {
+            bot.sendMessage(chatId, "⚠️ No image buffer available yet.");
+        }
+    });
+
+    bot.onText(/\/toggle/, (msg) => {
+        const chatId = msg.chat.id;
+        if (chatId.toString() !== TELEGRAM_CHAT_ID.toString()) return;
+
+        isAiEnabled = !isAiEnabled;
+        const status = isAiEnabled ? "Activated" : "Deactivated";
+
+        // Notify via Telegram
+        bot.sendMessage(chatId, `🤖 AI Detection has been *${status}*.`, { parse_mode: 'Markdown' });
+
+        // Broadcast to WebUI
+        broadcastUpdate();
+        console.log(`AI Detection toggled via Telegram: ${isAiEnabled}`);
+    });
+
+    bot.onText(/\/start|\/help/, (msg) => {
+        const chatId = msg.chat.id;
+        if (chatId.toString() !== TELEGRAM_CHAT_ID.toString()) return;
+
+        const helpText = `👋 *ESP32 Camera Bot*\n\nAvailable commands:\n/status - Check current system state\n/photo - Get a live photo\n/toggle - Enable/Disable AI\n/help - Show this message`;
+        bot.sendMessage(chatId, helpText, { parse_mode: 'Markdown' });
+    });
+
 } else {
     console.log("Telegram Bot Config Missing (Optional)");
 }
@@ -106,12 +154,13 @@ function isAuthorized(request) {
 }
 
 // Broadcast to all connected WebSocket clients
-function broadcastUpdate() {
+function broadcastUpdate(isEdgeDetected = false) {
     const data = JSON.stringify({
         type: 'frame',
         image: currentImageBuffer ? currentImageBuffer.toString('base64') : null,
         labels: currentLabels,
-        aiEnabled: isAiEnabled
+        aiEnabled: isAiEnabled,
+        edgeDetected: isEdgeDetected
     });
 
     wss.clients.forEach(client => {
@@ -199,8 +248,13 @@ server.on('request', (request, response) => {
                     currentLabels = []; // Clear labels if AI is off
                 }
 
+                const isEdgeDetected = request.headers['x-face-detected'] === '1';
+                if (isEdgeDetected) {
+                    console.log("⚡ [Edge AI] Face detected locally on ESP32!");
+                }
+
                 // Broadcast update to WebSockets immediately
-                broadcastUpdate();
+                broadcastUpdate(isEdgeDetected);
 
                 response.writeHead(200, { 'Content-Type': 'application/json' });
                 response.end(JSON.stringify(currentLabels));
