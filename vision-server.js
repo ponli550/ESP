@@ -12,6 +12,10 @@ const TelegramBot = require('node-telegram-bot-api'); // Import Telegram Bot
 
 const server = http.createServer();
 const wss = new WebSocket.Server({ server }); // Attach WebSocket to HTTP server
+const sharp = require('sharp'); // Image processing
+
+// Rotation Config
+const ROTATE_IMAGE = process.env.ROTATE_IMAGE ? parseInt(process.env.ROTATE_IMAGE) : 0;
 
 // Store image in memory instead of file
 let currentImageBuffer = null;
@@ -339,8 +343,18 @@ server.on('request', (request, response) => {
 
         request.on('end', async function () {
             // Combine chunks into a single buffer
-            currentImageBuffer = Buffer.concat(chunks);
-            console.log(`Received image. Size: ${currentImageBuffer.length} bytes`);
+            let buffer = Buffer.concat(chunks);
+            console.log(`Received image. Size: ${buffer.length} bytes`);
+
+            // Rotate if configured
+            if (ROTATE_IMAGE !== 0) {
+                try {
+                    buffer = await sharp(buffer).rotate(ROTATE_IMAGE).toBuffer();
+                } catch (e) {
+                    console.error("Image rotation failed:", e);
+                }
+            }
+            currentImageBuffer = buffer;
 
             try {
                 // Only perform AI detection if enabled!

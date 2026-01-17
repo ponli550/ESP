@@ -3,6 +3,7 @@
     "@google-cloud/vision": "^4.3.2",
     "dotenv": "^16.4.7",
     "node-telegram-bot-api": "^0.67.0",
+    "sharp": "^0.34.5",
     "ws": "^8.19.0"
   },
   "scripts": {
