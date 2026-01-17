@@ -1,7 +1,8 @@
 {
   "dependencies": {
     "@google-cloud/vision": "^4.3.2",
-    "dotenv": "^16.4.7"
+    "dotenv": "^16.4.7",
+    "ws": "^8.19.0"
   },
   "scripts": {
     "start": "node vision-server.js"

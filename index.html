@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,6 +12,7 @@
             --text-primary: #f8fafc;
             --text-secondary: #94a3b8;
             --accent: #38bdf8;
+            --chip-bg: #334155;
         }
 
         body {
@@ -52,6 +54,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            margin-bottom: 1.5rem;
         }
 
         img {
@@ -61,8 +64,45 @@
             transition: opacity 0.2s ease-in-out;
         }
 
+        .labels-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 0.5rem;
+            min-height: 2rem;
+        }
+
+        .chip {
+            background-color: var(--chip-bg);
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        .chip span {
+            font-weight: 600;
+            color: var(--accent);
+            margin-left: 0.25rem;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(5px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
         .status {
-            margin-top: 1rem;
+            margin-top: 1.5rem;
             font-size: 0.875rem;
             color: var(--text-secondary);
         }
@@ -70,53 +110,123 @@
         .dot {
             height: 8px;
             width: 8px;
-            background-color: #22c55e;
+            background-color: #f59e0b;
+            /* Amber for connecting */
             border-radius: 50%;
             display: inline-block;
             margin-right: 0.5rem;
+        }
+
+        .dot.connected {
+            background-color: #22c55e;
+            /* Green for connected */
             animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
 
         @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: .5; }
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: .5;
+            }
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         <h1>Live Camera Feed</h1>
         <div class="image-container">
             <img id="camImage" src="/saveImage.jpg" alt="Waiting for stream..." onerror="this.style.display='none'">
         </div>
+
+        <div id="labels" class="labels-container">
+            <!-- Labels will be injected here -->
+        </div>
+
         <div class="status">
-            <span class="dot"></span>Live View • Auto-refreshing
+            <span id="statusDot" class="dot"></span>
+            <span id="statusText">Connecting...</span>
         </div>
     </div>
 
     <script>
         const img = document.getElementById('camImage');
-        
-        function refreshImage() {
-            // Append timestamp to prevent caching
-            const timestamp = new Date().getTime();
-            const newSrc = '/saveImage.jpg?t=' + timestamp;
-            
-            // Create a temp image to load first (prevents flickering)
-            const tempImg = new Image();
-            tempImg.onload = () => {
-                img.src = newSrc;
-                img.style.display = 'block';
+        const labelsContainer = document.getElementById('labels');
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+
+        function connectWebSocket() {
+            // Use wss:// if on https, ws:// if on http
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = protocol + '//' + window.location.host;
+
+            const ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                console.log('WebSocket Connected');
+                statusDot.classList.add('connected');
+                statusDot.style.backgroundColor = ''; // Remove inline override
+                statusText.innerText = 'Live View • Real-time (WebSocket)';
             };
-            tempImg.onerror = () => {
-                // Keep showing old image or placeholder if fetch fails
-                console.log('Image fetch failed, retrying...');
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+
+                    if (data.type === 'frame') {
+                        // Update Image
+                        if (data.image) {
+                            img.src = 'data:image/jpeg;base64,' + data.image;
+                            img.style.display = 'block';
+                        }
+
+                        // Update Labels
+                        if (data.labels) {
+                            updateLabels(data.labels);
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error parsing WebSocket message', e);
+                }
             };
-            tempImg.src = newSrc;
+
+            ws.onclose = () => {
+                console.log('WebSocket Disconnected. Reconnecting...');
+                statusDot.classList.remove('connected');
+                statusDot.style.backgroundColor = '#ef4444'; // Red
+                statusText.innerText = 'Disconnected (Reconnecting...)';
+                // Try reconnect in 3 seconds
+                setTimeout(connectWebSocket, 3000);
+            };
+
+            ws.onerror = (err) => {
+                console.error('WebSocket Error', err);
+                ws.close();
+            };
         }
 
-        // Refresh every 1000ms (1 second)
-        setInterval(refreshImage, 1000);
+        function updateLabels(labels) {
+            labelsContainer.innerHTML = ''; // Clear existing
+            if (labels && labels.length > 0) {
+                // Take top 5 labels
+                labels.slice(0, 5).forEach(label => {
+                    const chip = document.createElement('div');
+                    chip.className = 'chip';
+                    const percent = Math.round(label.score * 100) + '%';
+                    chip.innerHTML = `${label.description} <span>${percent}</span>`;
+                    labelsContainer.appendChild(chip);
+                });
+            }
+        }
+
+        // Start connection
+        connectWebSocket();
     </script>
 </body>
+
 </html>
