@@ -102,7 +102,7 @@ if (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID) {
         if (chatId.toString() !== TELEGRAM_CHAT_ID.toString()) return;
 
         if (currentImageBuffer) {
-            bot.sendPhoto(chatId, currentImageBuffer, { caption: "📸 Fresh snapshot from camera." });
+            bot.sendPhoto(chatId, currentImageBuffer, { caption: "📸 Fresh snapshot from camera." }, { filename: 'snapshot.jpg', contentType: 'image/jpeg' });
         } else {
             bot.sendMessage(chatId, "⚠️ No image buffer available yet.");
         }
@@ -124,7 +124,7 @@ if (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID) {
             const buffer = Buffer.from(snap.image, 'base64');
             bot.sendPhoto(chatId, buffer, {
                 caption: `🕒 ${snap.time}\n🏷️ ${snap.labels}`
-            });
+            }, { filename: 'snapshot.jpg', contentType: 'image/jpeg' });
         });
     });
 
@@ -167,7 +167,7 @@ if (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID) {
             });
         } else if (data === 'photo') {
             if (currentImageBuffer) {
-                bot.sendPhoto(chatId, currentImageBuffer, { caption: "📸 Fresh snapshot from camera." });
+                bot.sendPhoto(chatId, currentImageBuffer, { caption: "📸 Fresh snapshot from camera." }, { filename: 'snapshot.jpg', contentType: 'image/jpeg' });
             } else {
                 bot.answerCallbackQuery(query.id, { text: "⚠️ No image buffer available.", show_alert: true });
             }
@@ -192,7 +192,7 @@ if (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID) {
                 snapshotGallery.slice(0, 3).forEach((snap) => {
                     bot.sendPhoto(chatId, Buffer.from(snap.image, 'base64'), {
                         caption: `🕒 ${snap.time}\n🏷️ ${snap.labels}`
-                    });
+                    }, { filename: 'snapshot.jpg', contentType: 'image/jpeg' });
                 });
             }
         }
@@ -305,7 +305,7 @@ async function sendTelegramAlert(imageBuffer, labels) {
         try {
             await bot.sendPhoto(TELEGRAM_CHAT_ID, imageBuffer, {
                 caption: `🚨 Security Alert: ${detected.description} detected! (${Math.round(detected.score * 100)}%)`
-            });
+            }, { filename: 'alert.jpg', contentType: 'image/jpeg' });
             console.log("Telegram alert sent successfully.");
         } catch (e) {
             console.error("Failed to send Telegram alert:", e.message);
@@ -518,7 +518,7 @@ server.on('request', (request, response) => {
                 try {
                     await bot.sendVideo(TELEGRAM_CHAT_ID, videoBuffer, {
                         caption: `🎞️ Manual Recording Uploaded at ${new Date().toLocaleTimeString()}`
-                    });
+                    }, { filename: 'recording.webm', contentType: 'video/webm' });
                     response.writeHead(200, { 'Content-Type': 'application/json' });
                     response.end(JSON.stringify({ success: true }));
                 } catch (e) {
