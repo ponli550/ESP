@@ -613,34 +613,61 @@
             recordingCanvas.width = img.naturalWidth || 800;
             recordingCanvas.height = img.naturalHeight || 600;
 
-            const stream = recordingCanvas.captureStream(15); // 15 FPS for smoother video
+            const stream = recordingCanvas.captureStream(15); // 15 FPS
 
-            // Try different mime types
-            const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8')
-                ? 'video/webm;codecs=vp8'
-                : 'video/webm';
+            // Robust MIME Type Selection
+            const mimeTypes = [
+                'video/mp4',
+                'video/webm;codecs=vp9',
+                'video/webm;codecs=vp8',
+                'video/webm'
+            ];
 
-            mediaRecorder = new MediaRecorder(stream, { mimeType });
+            let selectedMime = mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || '';
+
+            if (!selectedMime) {
+                console.error("No supported MediaRecorder MIME type found!");
+                alert("Error: Your browser does not support video recording.");
+                isRecording = false;
+                return;
+            }
+            console.log("Using MIME:", selectedMime);
+
+            try {
+                mediaRecorder = new MediaRecorder(stream, { mimeType: selectedMime });
+            } catch (e) {
+                console.error("MediaRecorder init failed:", e);
+                alert("Failed to start recorder: " + e.message);
+                isRecording = false;
+                return;
+            }
 
             mediaRecorder.ondataavailable = (event) => {
                 if (event.data.size > 0) {
                     recordedChunks.push(event.data);
-                    console.log(`Recorded chunk: ${event.data.size} bytes`);
+                    // Optional: Update UI with current size
+                    const sizeKB = Math.round(new Blob(recordedChunks).size / 1024);
+                    recIndicator.innerText = `REC (${sizeKB}KB)`;
                 }
             };
 
             mediaRecorder.onstop = () => {
-                const blob = new Blob(recordedChunks, { type: 'video/webm' });
-                console.log(`Total video size: ${blob.size} bytes`);
-                uploadVideo(blob);
+                const blob = new Blob(recordedChunks, { type: selectedMime });
+                console.log(`Final video size: ${blob.size} bytes`);
+
+                if (blob.size === 0) {
+                    alert("Recording failed: Video is empty (0 bytes).");
+                } else {
+                    uploadVideo(blob);
+                }
+                recIndicator.innerText = 'REC'; // Reset text
             };
 
-            mediaRecorder.start(1000); // capture 1s chunks
+            mediaRecorder.start(1000); // 1s chunks
 
             recordBtn.classList.add('recording');
             recordBtn.querySelector('span').innerText = 'Stop';
             recIndicator.style.display = 'flex';
-            console.log("Recording started...");
         }
 
         function stopRecording() {
