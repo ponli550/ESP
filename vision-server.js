@@ -18,6 +18,10 @@ let currentImageBuffer = null;
 let currentLabels = [];
 let isAiEnabled = true; // DEFAULT: AI IS ON
 
+// Snapshot Gallery (Detection Reel)
+let snapshotGallery = []; // Max 10 items
+const MAX_GALLERY_SIZE = 10;
+
 // Auth Config
 const SERVER_PASSWORD = process.env.PASSWORD || "admin";
 const COOKIE_NAME = "cameraview_auth";
@@ -27,7 +31,7 @@ const sessions = new Map();
 const SESSION_DURATION = 60 * 60 * 1000; // 1 Hour
 
 // API Key Config
-const ESP32_API_KEY = process.env.espkey || "esp_key";
+const ESP32_API_KEY = process.env.esp_key || "esp_key";
 
 // Rate Limiting Config
 const LOGIN_LIMIT_WINDOW = 60 * 1000; // 1 minute   
@@ -40,7 +44,8 @@ const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const ALERT_TARGET = process.env.ALERT_TARGET
     ? process.env.ALERT_TARGET.split(',').map(s => s.trim())
-    : ["Person", "Toys"]; // Default targets
+    : ["Skin", "Eyelash", "Jaw", "Head", "Forehead"];
+// Default targets
 const ALERT_COOLDOWN = 60 * 1000; // 1 minute cooldown
 
 let lastAlertTime = 0;
@@ -160,7 +165,8 @@ function broadcastUpdate(isEdgeDetected = false) {
         image: currentImageBuffer ? currentImageBuffer.toString('base64') : null,
         labels: currentLabels,
         aiEnabled: isAiEnabled,
-        edgeDetected: isEdgeDetected
+        edgeDetected: isEdgeDetected,
+        gallery: snapshotGallery // Send the latest 10 snapshots
     });
 
     wss.clients.forEach(client => {
@@ -248,9 +254,29 @@ server.on('request', (request, response) => {
                     currentLabels = []; // Clear labels if AI is off
                 }
 
-                const isEdgeDetected = request.headers['x-face-detected'] === '1';
                 if (isEdgeDetected) {
                     console.log("⚡ [Edge AI] Face detected locally on ESP32!");
+                }
+
+                // Add to Snapshot Gallery if target detected or edge alert
+                const targets = Array.isArray(ALERT_TARGET) ? ALERT_TARGET : [ALERT_TARGET];
+                const hasTarget = currentLabels.some(label => {
+                    const desc = label.description.toLowerCase();
+                    return targets.some(target => typeof target === 'string' && desc.includes(target.toLowerCase()));
+                });
+
+                if (hasTarget || isEdgeDetected) {
+                    const snapshot = {
+                        id: Date.now(),
+                        time: new Date().toLocaleTimeString(),
+                        image: currentImageBuffer.toString('base64'),
+                        labels: currentLabels.slice(0, 3).map(l => l.description).join(", ") || (isEdgeDetected ? "Edge Detection" : "Detection")
+                    };
+
+                    snapshotGallery.unshift(snapshot); // Add to beginning
+                    if (snapshotGallery.length > MAX_GALLERY_SIZE) {
+                        snapshotGallery.pop(); // Remove oldest
+                    }
                 }
 
                 // Broadcast update to WebSockets immediately
