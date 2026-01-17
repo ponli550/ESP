@@ -31,7 +31,7 @@ const sessions = new Map();
 const SESSION_DURATION = 60 * 60 * 1000; // 1 Hour
 
 // API Key Config
-const ESP32_API_KEY = process.env.esp_key || "esp_key";
+const ESP32_API_KEY = process.env.ESP32_API_KEY || "esp_key";
 
 // Rate Limiting Config
 const LOGIN_LIMIT_WINDOW = 60 * 1000; // 1 minute   
