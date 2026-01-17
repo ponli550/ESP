@@ -38,7 +38,9 @@ const UPLOAD_LIMIT_MAX = 1; // 1 upload per window
 // Telegram Alert Config
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
-const ALERT_TARGET = process.env.ALERT_TARGET || ["Person", "Toys"]; // Default target
+const ALERT_TARGET = process.env.ALERT_TARGET
+    ? process.env.ALERT_TARGET.split(',').map(s => s.trim())
+    : ["Person", "Toys"]; // Default targets
 const ALERT_COOLDOWN = 60 * 1000; // 1 minute cooldown
 
 let lastAlertTime = 0;
@@ -129,8 +131,12 @@ async function sendTelegramAlert(imageBuffer, labels) {
     const now = Date.now();
     if (now - lastAlertTime < ALERT_COOLDOWN) return; // Cooldown
 
-    // Check if target label exists in detections
-    const detected = labels.find(l => l.description.toLowerCase().includes(ALERT_TARGET.toLowerCase()));
+    // Check if any of the target labels exist in detections
+    const targets = Array.isArray(ALERT_TARGET) ? ALERT_TARGET : [ALERT_TARGET];
+    const detected = labels.find(label => {
+        const desc = label.description.toLowerCase();
+        return targets.some(target => typeof target === 'string' && desc.includes(target.toLowerCase()));
+    });
 
     if (detected) {
         console.log(`🚨 ALERT! Detected ${detected.description}. Sending to Telegram...`);
