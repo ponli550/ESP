@@ -254,6 +254,7 @@ server.on('request', (request, response) => {
                     currentLabels = []; // Clear labels if AI is off
                 }
 
+                const isEdgeDetected = request.headers['x-face-detected'] === '1';
                 if (isEdgeDetected) {
                     console.log("⚡ [Edge AI] Face detected locally on ESP32!");
                 }
@@ -384,6 +385,40 @@ server.on('request', (request, response) => {
         });
         return;
     }
+    // 6. Video Upload Endpoint (Manual Recording)
+    if (request.method == 'POST' && request.url === "/uploadVideo") {
+        if (!isAuthenticated(request)) {
+            response.writeHead(401);
+            response.end("Unauthorized");
+            return;
+        }
+
+        let chunks = [];
+        request.on('data', chunk => chunks.push(chunk));
+        request.on('end', async () => {
+            const videoBuffer = Buffer.concat(chunks);
+            console.log(`Received video file for Telegram. Size: ${videoBuffer.length} bytes`);
+
+            if (bot && TELEGRAM_CHAT_ID) {
+                try {
+                    await bot.sendVideo(TELEGRAM_CHAT_ID, videoBuffer, {
+                        caption: `🎞️ Manual Recording Uploaded at ${new Date().toLocaleTimeString()}`
+                    });
+                    response.writeHead(200, { 'Content-Type': 'application/json' });
+                    response.end(JSON.stringify({ success: true }));
+                } catch (e) {
+                    console.error("Telegram sendVideo error:", e.message);
+                    response.writeHead(500);
+                    response.end("Failed to send to Telegram");
+                }
+            } else {
+                response.writeHead(503);
+                response.end("Telegram Bot not configured");
+            }
+        });
+        return;
+    }
+
 
     if (request.method == 'GET' && request.url == '/') {
         fs.readFile('./index.html', function (err, data) {

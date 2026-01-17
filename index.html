@@ -162,6 +162,81 @@
             font-weight: 500;
         }
 
+        /* Record Button */
+        .record-btn {
+            background-color: var(--danger);
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: opacity 0.2s;
+            margin-left: 1rem;
+        }
+
+        .record-btn:hover {
+            opacity: 0.9;
+        }
+
+        .record-btn.recording {
+            background-color: #334155;
+            animation: pulse-red 2s infinite;
+        }
+
+        @keyframes pulse-red {
+            0% {
+                box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+            }
+
+            70% {
+                box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+            }
+        }
+
+        .rec-indicator {
+            display: none;
+            align-items: center;
+            gap: 0.4rem;
+            color: var(--danger);
+            font-weight: 700;
+            font-size: 0.75rem;
+            position: absolute;
+            top: 1rem;
+            left: 1rem;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 0.2rem 0.5rem;
+            border-radius: 0.25rem;
+        }
+
+        .rec-dot {
+            height: 8px;
+            width: 8px;
+            background-color: var(--danger);
+            border-radius: 50%;
+            animation: fadeInOut 1s infinite;
+        }
+
+        @keyframes fadeInOut {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.3;
+            }
+        }
+
         @keyframes fadeIn {
             from {
                 opacity: 0;
@@ -326,6 +401,9 @@
         </header>
 
         <div class="image-container">
+            <div id="recIndicator" class="rec-indicator">
+                <span class="rec-dot"></span> REC
+            </div>
             <div id="edgeBadge" class="edge-badge">⚡ Edge AI: Face Detected</div>
             <img id="camImage" src="/saveImage.jpg" alt="No Signal" onerror="this.style.display='none'">
         </div>
@@ -340,6 +418,13 @@
                 <input type="checkbox" id="aiToggle" onchange="toggleAi(this.checked)">
                 <span class="slider"></span>
             </label>
+
+            <button id="recordBtn" class="record-btn" onclick="toggleRecording()">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                    <circle cx="12" cy="12" r="10"></circle>
+                </svg>
+                <span>Record</span>
+            </button>
         </div>
 
         <div class="gallery-container">
@@ -365,7 +450,15 @@
         const aiToggle = document.getElementById('aiToggle');
         const edgeBadge = document.getElementById('edgeBadge');
         const galleryReel = document.getElementById('galleryReel');
+        const recordBtn = document.getElementById('recordBtn');
+        const recIndicator = document.getElementById('recIndicator');
+
         let edgeTimeout;
+        let mediaRecorder;
+        let recordedChunks = [];
+        let isRecording = false;
+        const recordingCanvas = document.createElement('canvas');
+        const recordingCtx = recordingCanvas.getContext('2d');
 
         // Initial fetch to get status
         fetch('/labels')
@@ -409,8 +502,14 @@
                     if (data.type === 'frame') {
                         // Image
                         if (data.image) {
-                            img.src = 'data:image/jpeg;base64,' + data.image;
+                            const blobUrl = 'data:image/jpeg;base64,' + data.image;
+                            img.src = blobUrl;
                             img.style.display = 'block';
+
+                            // If recording, draw to canvas
+                            if (isRecording) {
+                                drawToRecordingCanvas(img);
+                            }
                         }
 
                         // Labels (Check if array or object wrapper)
@@ -496,6 +595,102 @@
                 `;
                 galleryReel.appendChild(item);
             });
+        }
+
+        function toggleRecording() {
+            if (!isRecording) {
+                startRecording();
+            } else {
+                stopRecording();
+            }
+        }
+
+        function startRecording() {
+            isRecording = true;
+            recordedChunks = [];
+
+            // Set canvas size to match current image
+            recordingCanvas.width = img.naturalWidth || 800;
+            recordingCanvas.height = img.naturalHeight || 600;
+
+            const stream = recordingCanvas.captureStream(5); // 5 FPS
+
+            // Try different mime types
+            const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8')
+                ? 'video/webm;codecs=vp8'
+                : 'video/webm';
+
+            mediaRecorder = new MediaRecorder(stream, { mimeType });
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    recordedChunks.push(event.data);
+                }
+            };
+
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(recordedChunks, { type: 'video/webm' });
+                uploadVideo(blob);
+            };
+
+            mediaRecorder.start();
+
+            recordBtn.classList.add('recording');
+            recordBtn.querySelector('span').innerText = 'Stop';
+            recIndicator.style.display = 'flex';
+            console.log("Recording started...");
+        }
+
+        function stopRecording() {
+            isRecording = false;
+            mediaRecorder.stop();
+
+            recordBtn.classList.remove('recording');
+            recordBtn.querySelector('span').innerText = 'Record';
+            recIndicator.style.display = 'none';
+            console.log("Recording stopped.");
+        }
+
+        function drawToRecordingCanvas(imageElement) {
+            // Ensure canvas matches image size if it changed
+            if (recordingCanvas.width !== imageElement.naturalWidth) {
+                recordingCanvas.width = imageElement.naturalWidth;
+                recordingCanvas.height = imageElement.naturalHeight;
+            }
+            recordingCtx.drawImage(imageElement, 0, 0);
+        }
+
+        function uploadVideo(blob) {
+            console.log("Uploading video to Telegram...");
+            recordBtn.querySelector('span').innerText = 'Sending...';
+            recordBtn.disabled = true;
+
+            const formData = new FormData();
+            formData.append('video', blob, 'recording.webm');
+
+            // We use simple POST with binary body since server expects it
+            fetch('/uploadVideo', {
+                method: 'POST',
+                body: blob
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        console.log("Video sent to Telegram!");
+                        recordBtn.querySelector('span').innerText = 'Sent ✅';
+                    } else {
+                        recordBtn.querySelector('span').innerText = 'Failed ❌';
+                    }
+                    setTimeout(() => {
+                        recordBtn.disabled = false;
+                        recordBtn.querySelector('span').innerText = 'Record';
+                    }, 3000);
+                })
+                .catch(err => {
+                    console.error("Upload error", err);
+                    recordBtn.disabled = false;
+                    recordBtn.querySelector('span').innerText = 'Record';
+                });
         }
 
         connectWebSocket();
