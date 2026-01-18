@@ -768,12 +768,17 @@
         }
 
         function drawToRecordingCanvas(imageElement) {
+            const width = imageElement.videoWidth || imageElement.naturalWidth;
+            const height = imageElement.videoHeight || imageElement.naturalHeight;
+
             // Ensure canvas matches image size if it changed
-            if (recordingCanvas.width !== imageElement.naturalWidth) {
-                recordingCanvas.width = imageElement.naturalWidth;
-                recordingCanvas.height = imageElement.naturalHeight;
+            if (width && height && (recordingCanvas.width !== width || recordingCanvas.height !== height)) {
+                recordingCanvas.width = width;
+                recordingCanvas.height = height;
             }
-            recordingCtx.drawImage(imageElement, 0, 0);
+            if (width && height) {
+                recordingCtx.drawImage(imageElement, 0, 0, width, height);
+            }
         }
 
         function uploadVideo(blob) {
