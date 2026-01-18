@@ -476,22 +476,45 @@
 
             if (useWebcam) {
                 try {
-                    webcamStream = await navigator.mediaDevices.getUserMedia({ video: true });
-                    webcamVideo.srcObject = webcamStream;
+                    // Initialize Roboflow WebRTC
+                    if (!window.roboflowStream) {
+                        const { connectors, webrtc, streams } = await import("https://cdn.jsdelivr.net/npm/@roboflow/inference-sdk/+esm");
+
+                        const connector = connectors.withProxyUrl("/api/init-webrtc");
+                        const stream = await streams.useCamera({ video: { facingMode: "environment" } });
+
+                        window.roboflowStream = await webrtc.useStream({
+                            source: stream,
+                            connector,
+                            wrtcParams: {
+                                workspaceName: "ian-xsv32",
+                                workflowId: "active-learning",
+                                streamOutputNames: ["output_image"],
+                                dataOutputNames: ["upload_message", "predictions"],
+                                processingTimeout: 600,
+                                requestedPlan: "webrtc-gpu-medium",
+                                requestedRegion: "us"
+                            },
+                            onData: (data) => console.log("Roboflow Predictions:", data)
+                        });
+                    }
+
+                    webcamVideo.srcObject = await window.roboflowStream.remoteStream();
                     webcamVideo.style.display = 'block';
                     img.style.display = 'none';
                     sourceToggleBtn.innerHTML = '📶 Switch to ESP32';
                     sourceToggleBtn.style.backgroundColor = 'var(--accent)';
                     sourceToggleBtn.style.color = '#000';
                 } catch (err) {
-                    console.error("Webcam error:", err);
-                    alert("Could not access webcam: " + err.message);
+                    console.error("Webcam/Roboflow error:", err);
+                    alert("Could not start AI Webcam: " + err.message);
                     useWebcam = false;
                 }
             } else {
-                if (webcamStream) {
-                    webcamStream.getTracks().forEach(track => track.stop());
-                    webcamStream = null;
+                if (window.roboflowStream) {
+                    // Optional: Pause stream or cleanup?
+                    // window.roboflowStream.cleanup(); 
+                    // window.roboflowStream = null;
                 }
                 webcamVideo.style.display = 'none';
                 img.style.display = 'block';

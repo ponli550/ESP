@@ -13,6 +13,8 @@ const TelegramBot = require('node-telegram-bot-api'); // Import Telegram Bot
 const server = http.createServer();
 const wss = new WebSocket.Server({ server }); // Attach WebSocket to HTTP server
 const sharp = require('sharp'); // Image processing
+const { InferenceHTTPClient } = require("@roboflow/inference-sdk");
+
 
 // Rotation Config
 const ROTATE_IMAGE = process.env.ROTATE_IMAGE ? parseInt(process.env.ROTATE_IMAGE) : 0;
@@ -529,6 +531,65 @@ server.on('request', (request, response) => {
             } else {
                 response.writeHead(503);
                 response.end("Telegram Bot not configured");
+            }
+        });
+        return;
+    }
+
+    // 7. Roboflow WebRTC Proxy
+    if (request.method == 'POST' && request.url === "/api/init-webrtc") {
+        let body = '';
+        request.on('data', chunk => body += chunk.toString());
+        request.on('end', async () => {
+            try {
+                const { offer, wrtcParams } = JSON.parse(body);
+                // console.log("Initializing WebRTC Worker for:", wrtcParams.workspaceName);
+
+                const client = new InferenceHTTPClient({
+                    apiKey: process.env.ROBOFLOW_API_KEY,
+                    apiUrl: "https://detect.roboflow.com" // or serverless URL if needed
+                });
+
+                // Note: The SDK documentation might require a different init method for passing the apiKey directly 
+                // if not using the static init. Checking the user's snippet: InferenceHTTPClient.init({ apiKey })
+                // Let's use the static init as per their example if strictly following.
+                // But since we are in CJS, let's assume the import is correct.
+                // Actually, let's follow their snippet exactly:
+
+                /* 
+                   const client = InferenceHTTPClient.init({
+                        apiKey: process.env.ROBOFLOW_API_KEY
+                   });
+                */
+                // To be safe and avoid "init is not a function" if versions differ, we'll try standard instantiation first
+                // or check the imported object.
+
+                // Using the user's structure:
+                const sdkClient = InferenceHTTPClient.init({
+                    apiKey: process.env.ROBOFLOW_API_KEY
+                });
+
+                const answer = await sdkClient.initializeWebRTCWorker({
+                    offer,
+                    workspaceName: wrtcParams.workspaceName,
+                    workflowId: wrtcParams.workflowId,
+                    config: {
+                        streamOutputNames: wrtcParams.streamOutputNames,
+                        dataOutputNames: wrtcParams.dataOutputNames,
+                        workflowsParameters: wrtcParams.workflowsParameters,
+                        processingTimeout: wrtcParams.processingTimeout,
+                        requestedPlan: wrtcParams.requestedPlan,
+                        requestedRegion: wrtcParams.requestedRegion,
+                        realtimeProcessing: wrtcParams.realtimeProcessing
+                    }
+                });
+
+                response.writeHead(200, { 'Content-Type': 'application/json' });
+                response.end(JSON.stringify(answer));
+            } catch (e) {
+                console.error("Roboflow WebRTC Init Error:", e);
+                response.writeHead(500, { 'Content-Type': 'application/json' });
+                response.end(JSON.stringify({ error: e.message }));
             }
         });
         return;
