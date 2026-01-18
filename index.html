@@ -406,6 +406,8 @@
             </div>
             <div id="edgeBadge" class="edge-badge">⚡ Edge AI: Face Detected</div>
             <img id="camImage" src="/saveImage.jpg" alt="No Signal" onerror="this.style.display='none'">
+            <video id="webcamVideo" autoplay playsinline
+                style="display: none; max-width: 100%; max-height: 100%; object-fit: contain;"></video>
         </div>
 
         <div id="labels" class="labels-container">
@@ -413,6 +415,9 @@
         </div>
 
         <div class="controls">
+            <button id="sourceToggle" class="record-btn"
+                style="background-color: var(--chip-bg); margin-left: 0; margin-right: 1rem;"
+                onclick="toggleSource()">📷 Camera</button>
             <span class="control-label">AI Detection</span>
             <label class="switch">
                 <input type="checkbox" id="aiToggle" onchange="toggleAi(this.checked)">
@@ -452,6 +457,11 @@
         const galleryReel = document.getElementById('galleryReel');
         const recordBtn = document.getElementById('recordBtn');
         const recIndicator = document.getElementById('recIndicator');
+        const webcamVideo = document.getElementById('webcamVideo');
+        const sourceToggleBtn = document.getElementById('sourceToggle');
+
+        let useWebcam = false;
+        let webcamStream = null;
 
         let edgeTimeout;
         let mediaRecorder;
@@ -459,6 +469,37 @@
         let isRecording = false;
         const recordingCanvas = document.createElement('canvas');
         const recordingCtx = recordingCanvas.getContext('2d');
+
+
+        async function toggleSource() {
+            useWebcam = !useWebcam;
+
+            if (useWebcam) {
+                try {
+                    webcamStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    webcamVideo.srcObject = webcamStream;
+                    webcamVideo.style.display = 'block';
+                    img.style.display = 'none';
+                    sourceToggleBtn.innerHTML = '📶 Switch to ESP32';
+                    sourceToggleBtn.style.backgroundColor = 'var(--accent)';
+                    sourceToggleBtn.style.color = '#000';
+                } catch (err) {
+                    console.error("Webcam error:", err);
+                    alert("Could not access webcam: " + err.message);
+                    useWebcam = false;
+                }
+            } else {
+                if (webcamStream) {
+                    webcamStream.getTracks().forEach(track => track.stop());
+                    webcamStream = null;
+                }
+                webcamVideo.style.display = 'none';
+                img.style.display = 'block';
+                sourceToggleBtn.innerHTML = '📷 Camera';
+                sourceToggleBtn.style.backgroundColor = 'var(--chip-bg)';
+                sourceToggleBtn.style.color = 'white';
+            }
+        }
 
         // Initial fetch to get status
         fetch('/labels')
@@ -502,13 +543,15 @@
                     if (data.type === 'frame') {
                         // Image
                         if (data.image) {
-                            const blobUrl = 'data:image/jpeg;base64,' + data.image;
-                            img.src = blobUrl;
-                            img.style.display = 'block';
+                            if (!useWebcam) {
+                                const blobUrl = 'data:image/jpeg;base64,' + data.image;
+                                img.src = blobUrl;
+                                img.style.display = 'block';
 
-                            // If recording, draw to canvas
-                            if (isRecording) {
-                                drawToRecordingCanvas(img);
+                                // If recording, draw to canvas
+                                if (isRecording) {
+                                    drawToRecordingCanvas(img);
+                                }
                             }
                         }
 
@@ -597,6 +640,12 @@
             });
         }
 
+        function renderWebcamLoop() {
+            if (!isRecording || !useWebcam) return;
+            drawToRecordingCanvas(webcamVideo);
+            requestAnimationFrame(renderWebcamLoop);
+        }
+
         function toggleRecording() {
             if (!isRecording) {
                 startRecording();
@@ -609,11 +658,19 @@
             isRecording = true;
             recordedChunks = [];
 
-            // Set canvas size to match current image
-            recordingCanvas.width = img.naturalWidth || 800;
-            recordingCanvas.height = img.naturalHeight || 600;
+            // Determine dimensions from active source
+            const source = useWebcam ? webcamVideo : img;
+            const width = useWebcam ? source.videoWidth : source.naturalWidth;
+            const height = useWebcam ? source.videoHeight : source.naturalHeight;
+
+            recordingCanvas.width = width || 800;
+            recordingCanvas.height = height || 600;
 
             const stream = recordingCanvas.captureStream(15); // 15 FPS
+
+            if (useWebcam) {
+                renderWebcamLoop();
+            }
 
             // Robust MIME Type Selection
             const mimeTypes = [
