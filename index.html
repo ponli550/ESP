@@ -7,18 +7,22 @@
     <title>Live Camera Feed</title>
     <style>
         :root {
-            --bg-color: #0f172a;
-            --card-bg: #1e293b;
-            --text-primary: #f8fafc;
+            --bg-color: #020617;
+            /* Deep Space Blue */
+            --card-bg: #0f172a;
+            --text-primary: #e2e8f0;
             --text-secondary: #94a3b8;
-            --accent: #38bdf8;
-            --chip-bg: #334155;
-            --success: #22c55e;
+            --accent: #06b6d4;
+            /* Cyan Neon */
+            --accent-glow: rgba(6, 182, 212, 0.5);
+            --chip-bg: #1e293b;
+            --success: #10b981;
             --danger: #ef4444;
+            --font-mono: 'JetBrains Mono', 'Consolas', 'Courier New', monospace;
         }
 
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-family: var(--font-mono);
             background-color: var(--bg-color);
             color: var(--text-primary);
             margin: 0;
@@ -27,16 +31,29 @@
             align-items: center;
             justify-content: center;
             min-height: 100vh;
+            background-image: radial-gradient(circle at 50% 50%, #1e293b 0%, #020617 100%);
         }
 
         .container {
             background-color: var(--card-bg);
             padding: 2rem;
-            border-radius: 1rem;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-            max-width: 90%;
-            width: 600px;
+            border-radius: 4px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5), 0 0 0 1px #334155;
+            max-width: 95%;
+            width: 900px;
             text-align: center;
+            position: relative;
+        }
+
+        .container::before {
+            content: "SECURE CONNECTION ESTABLISHED";
+            position: absolute;
+            top: -20px;
+            left: 10px;
+            font-size: 0.7rem;
+            color: var(--success);
+            letter-spacing: 2px;
+            opacity: 0.7;
         }
 
         header {
@@ -49,30 +66,56 @@
         }
 
         h1 {
-            font-size: 1.25rem;
-            font-weight: 600;
+            font-size: 1.5rem;
+            font-weight: 700;
             color: var(--accent);
+            text-shadow: 0 0 10px var(--accent-glow);
+            text-transform: uppercase;
+            letter-spacing: 1px;
             margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
 
         .image-container {
             position: relative;
             width: 100%;
-            aspect-ratio: 4/3;
+            aspect-ratio: 16/9;
             background-color: #000;
-            border-radius: 0.5rem;
+            border: 1px solid #334155;
+            border-radius: 4px;
             overflow: hidden;
             display: flex;
             align-items: center;
             justify-content: center;
             margin-bottom: 1.5rem;
+            box-shadow: inset 0 0 50px rgba(0, 0, 0, 0.8);
         }
 
-        img {
+        /* HUD Grid Overlay */
+        .image-container::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background:
+                linear-gradient(rgba(6, 182, 212, 0.1) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(6, 182, 212, 0.1) 1px, transparent 1px);
+            background-size: 50px 50px;
+            pointer-events: none;
+            opacity: 0.3;
+            z-index: 2;
+        }
+
+        img,
+        video {
             max-width: 100%;
             max-height: 100%;
             object-fit: contain;
-            transition: opacity 0.2s ease-in-out;
+            z-index: 1;
         }
 
         .labels-container {
@@ -85,30 +128,33 @@
         }
 
         .chip {
-            background-color: var(--chip-bg);
+            background-color: rgba(6, 182, 212, 0.1);
+            border: 1px solid var(--accent);
             padding: 0.25rem 0.75rem;
-            border-radius: 9999px;
-            font-size: 0.875rem;
-            color: var(--text-primary);
+            border-radius: 0;
+            font-size: 0.8rem;
+            color: var(--accent);
             display: flex;
             align-items: center;
+            text-transform: uppercase;
+            box-shadow: 0 0 5px var(--accent-glow);
             animation: fadeIn 0.3s ease-in-out;
         }
 
         .chip span {
-            font-weight: 600;
-            color: var(--accent);
-            margin-left: 0.25rem;
+            font-weight: 700;
+            color: #fff;
+            margin-left: 0.5rem;
         }
 
         .controls {
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
             gap: 1rem;
             background: #0f172a;
-            padding: 1rem;
-            border-radius: 0.5rem;
+            padding: 1.5rem;
+            border: 1px solid #334155;
+            margin-top: 1rem;
         }
 
         /* Toggle Switch */
@@ -387,6 +433,52 @@
                 opacity: 1;
             }
         }
+
+        /* HUD Overlay */
+        .hud-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            z-index: 5;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .hud-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .hud-bottom {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            font-size: 0.7rem;
+            color: var(--accent);
+            opacity: 0.8;
+        }
+
+        .hud-stat {
+            background: rgba(0, 0, 0, 0.6);
+            padding: 2px 6px;
+            border: 1px solid rgba(6, 182, 212, 0.3);
+            border-radius: 2px;
+            font-family: var(--font-mono);
+            font-size: 0.7rem;
+            color: var(--accent);
+            text-transform: uppercase;
+        }
+
+        .hud-live {
+            color: var(--danger);
+            animation: blink 2s infinite;
+        }
     </style>
 </head>
 
@@ -401,9 +493,22 @@
         </header>
 
         <div class="image-container">
-            <div id="recIndicator" class="rec-indicator">
-                <span class="rec-dot"></span> REC
+            <div class="hud-overlay">
+                <div class="hud-top">
+                    <div class="hud-stat" id="hudSource">OFFLINE</div>
+                    <div class="hud-stat hud-live">● LIVE</div>
+                </div>
+                <!-- Rec Indicator moved inside HUD -->
+                <div id="recIndicator" class="rec-indicator"
+                    style="position: relative; top: auto; left: auto; display: none;">
+                    <span class="rec-dot"></span> REC
+                </div>
+                <div class="hud-bottom">
+                    <div class="hud-stat">FPS: <span id="hudFps">0</span></div>
+                    <div class="hud-stat">1280x720</div>
+                </div>
             </div>
+
             <div id="edgeBadge" class="edge-badge">⚡ Edge AI: Face Detected</div>
             <img id="camImage" src="/saveImage.jpg" alt="No Signal" onerror="this.style.display='none'">
             <video id="webcamVideo" autoplay playsinline
@@ -471,10 +576,26 @@
         const recordingCtx = recordingCanvas.getContext('2d');
 
 
+        let frameCount = 0;
+        let lastFpsTime = Date.now();
+        const hudFps = document.getElementById('hudFps');
+        const hudSource = document.getElementById('hudSource');
+
+        function updateFps() {
+            frameCount++;
+            const now = Date.now();
+            if (now - lastFpsTime >= 1000) {
+                hudFps.innerText = frameCount;
+                frameCount = 0;
+                lastFpsTime = now;
+            }
+        }
+
         async function toggleSource() {
             useWebcam = !useWebcam;
 
             if (useWebcam) {
+                hudSource.innerText = "WEBCAM [ROBOFLOW]";
                 try {
                     // Initialize Roboflow WebRTC
                     if (!window.roboflowStream) {
@@ -577,6 +698,8 @@
                                 const blobUrl = 'data:image/jpeg;base64,' + data.image;
                                 img.src = blobUrl;
                                 img.style.display = 'block';
+                                hudSource.innerText = "ESP32 [JAAVIS-VISION]";
+                                updateFps();
 
                                 // If recording, draw to canvas
                                 if (isRecording) {
