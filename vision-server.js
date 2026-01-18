@@ -318,6 +318,20 @@ function broadcastUpdate(isEdgeDetected = false) {
     });
 }
 
+// Broadcast command to frontend (e.g. start_recording)
+function broadcastCommand(action) {
+    const data = JSON.stringify({
+        type: 'command',
+        action: action
+    });
+
+    wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(data);
+        }
+    });
+}
+
 function getClientIp(req) {
     return req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 }
