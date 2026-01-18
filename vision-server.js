@@ -68,7 +68,23 @@ let bot = null;
 // Initialize Bot if token exists
 if (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID) {
     bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
+
+    // CRITICAL: Handle polling errors to prevent crash when multiple instances run
+    bot.on('polling_error', (error) => {
+        if (error.code === 'ETELEGRAM' && error.message.includes('409 Conflict')) {
+            console.log("⚠️ Telegram Conflict: Another bot instance is running. Polling paused temporarily.");
+        } else {
+            console.log(`[Polling Error] ${error.code}: ${error.message}`);
+        }
+    });
+
     console.log("Telegram Bot Initialized with Polling");
+
+    // Initialize Vertex AI (MiniLLM)
+    const { VertexAI } = require('@google-cloud/vertexai');
+    // Using the same project ID as Google Vision default
+    const vertex_ai = new VertexAI({ project: 'esp32-484513', location: 'us-central1' });
+    const generativeModel = vertex_ai.getGenerativeModel({ model: 'gemini-1.5-flash-001' });
 
     // Set Persistent Menu
     bot.setMyCommands([
@@ -320,12 +336,27 @@ async function sendTelegramAlert(imageBuffer, labels) {
     });
 
     if (detected) {
-        console.log(`🚨 ALERT! Detected ${detected.description}. Sending to Telegram...`);
+        console.log(`🚨 ALERT! Detected ${detected.description}. Generating AI commentary...`);
         lastAlertTime = now;
+
+        let caption = `🚨 *Security Alert:* ${detected.description} detected!`;
+
+        try {
+            // Generate MiniLLM Commentary
+            if (isAiEnabled) {
+                const prompt = `You are a security camera AI. You detected a ${detected.description} with ${(detected.score * 100).toFixed(0)}% confidence. Write a short, serious but natural 1-sentence alert message for the homeowner. Do not mention "confidence".`;
+                const resp = await generativeModel.generateContent(prompt);
+                const content = resp.response.candidates[0].content.parts[0].text;
+                if (content) caption = `🤖 *AI Alert:* "${content.trim()}"`;
+            }
+        } catch (err) {
+            console.error("MiniLLM Error:", err.message);
+        }
 
         try {
             await bot.sendPhoto(TELEGRAM_CHAT_ID, imageBuffer, {
-                caption: `🚨 Security Alert: ${detected.description} detected! (${Math.round(detected.score * 100)}%)`
+                caption: caption,
+                parse_mode: 'Markdown'
             }, { filename: 'alert.jpg', contentType: 'image/jpeg' });
             console.log("Telegram alert sent successfully.");
         } catch (e) {

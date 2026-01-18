@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "@google-cloud/vertexai": "^1.10.0",
     "@google-cloud/vision": "^4.3.2",
     "@roboflow/inference-sdk": "^0.1.13",
     "dotenv": "^16.4.7",
