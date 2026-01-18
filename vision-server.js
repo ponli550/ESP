@@ -52,6 +52,7 @@ console.log("PWD:", process.cwd());
 console.log("ESP32_API_KEY:", process.env.ESP32_API_KEY ? "Loaded" : "Missing");
 console.log("TELEGRAM_BOT_TOKEN:", process.env.TELEGRAM_BOT_TOKEN ? "Loaded" : "Missing");
 console.log("TELEGRAM_CHAT_ID:", process.env.TELEGRAM_CHAT_ID ? "Loaded" : "Missing");
+console.log("ROBOFLOW_API_KEY:", process.env.ROBOFLOW_API_KEY ? "Loaded" : "Missing");
 
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
@@ -547,7 +548,7 @@ server.on('request', (request, response) => {
 
                 const client = new InferenceHTTPClient({
                     apiKey: process.env.ROBOFLOW_API_KEY,
-                    apiUrl: "https://detect.roboflow.com" // or serverless URL if needed
+                    apiUrl: "https://serverless.roboflow.com" // or serverless URL if needed
                 });
 
                 // Note: The SDK documentation might require a different init method for passing the apiKey directly 
@@ -569,7 +570,7 @@ server.on('request', (request, response) => {
                     apiKey: process.env.ROBOFLOW_API_KEY
                 });
 
-                const answer = await sdkClient.initializeWebRTCWorker({
+                const answer = await sdkClient.initializeWebrtcWorker({
                     offer,
                     workspaceName: wrtcParams.workspaceName,
                     workflowId: wrtcParams.workflowId,
