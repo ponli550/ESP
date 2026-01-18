@@ -76,7 +76,8 @@ if (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID) {
             inline_keyboard: [
                 [
                     { text: "Refresh 🔄", callback_data: "status" },
-                    { text: "Take Photo 📸", callback_data: "photo" }
+                    { text: "Take Photo 📸", callback_data: "photo" },
+                    { text: "Record Video 🎥", callback_data: "record" }
                 ],
                 [
                     { text: isAiEnabled ? "Disable AI 🤖" : "Enable AI 🤖", callback_data: "toggle" },
@@ -109,6 +110,14 @@ if (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID) {
         } else {
             bot.sendMessage(chatId, "⚠️ No image buffer available yet.");
         }
+    });
+
+    bot.onText(/\/record/, (msg) => {
+        const chatId = msg.chat.id;
+        if (chatId.toString() !== TELEGRAM_CHAT_ID.toString()) return;
+
+        bot.sendMessage(chatId, "🎥 request sent to dashboard to start recording...");
+        broadcastCommand('start_recording');
     });
 
     bot.onText(/\/gallery/, (msg) => {
@@ -174,6 +183,10 @@ if (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID) {
             } else {
                 bot.answerCallbackQuery(query.id, { text: "⚠️ No image buffer available.", show_alert: true });
             }
+        } else if (data === 'record') {
+            bot.sendMessage(chatId, "🎥 Recording started (via Dashboard)...");
+            broadcastCommand('start_recording');
+            bot.answerCallbackQuery(query.id, { text: "Recording requested!" });
         } else if (data === 'toggle') {
             isAiEnabled = !isAiEnabled;
             const status = isAiEnabled ? "✅ ON" : "❌ OFF";

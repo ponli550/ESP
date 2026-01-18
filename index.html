@@ -563,6 +563,13 @@
                 try {
                     const data = JSON.parse(event.data);
 
+                    if (data.type === 'command') {
+                        if (data.action === 'start_recording') {
+                            console.log("Remote recording command received!");
+                            if (!isRecording) startRecording();
+                        }
+                    }
+
                     if (data.type === 'frame') {
                         // Image
                         if (data.image) {
