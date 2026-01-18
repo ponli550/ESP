@@ -358,13 +358,20 @@ async function sendTelegramAlert(imageBuffer, labels) {
         try {
             // Generate MiniLLM Commentary
             if (isAiEnabled) {
+                console.log("Ask Gemini for commentary...");
                 const prompt = `You are a security camera AI. You detected a ${detected.description} with ${(detected.score * 100).toFixed(0)}% confidence. Write a short, serious but natural 1-sentence alert message for the homeowner. Do not mention "confidence".`;
+
                 const resp = await generativeModel.generateContent(prompt);
+                console.log("Gemini Response Raw:", JSON.stringify(resp));
+
                 const content = resp.response.candidates[0].content.parts[0].text;
-                if (content) caption = `🤖 *AI Alert:* "${content.trim()}"`;
+                if (content) {
+                    caption = `🤖 *AI Alert:* "${content.trim()}"`;
+                    console.log("Ai Commentary Generated:", caption);
+                }
             }
         } catch (err) {
-            console.error("MiniLLM Error:", err.message);
+            console.error("MiniLLM Error Details:", err);
         }
 
         try {
